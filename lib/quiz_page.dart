@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'finish_page.dart';
 import 'data_storage.dart';
 import 'models/question.dart';
@@ -30,11 +31,9 @@ class _QuizPageState extends State<QuizPage> {
   }
 
   void markAnswer(AnswerStatus status) {
-  final currentQuestion = widget.questions[currentIndex];
-  bool isLast = currentIndex == widget.questions.length - 1;
-
-  setState(() {
-    currentQuestion.status = status;
+    final currentQuestion = widget.questions[currentIndex];
+    setState(() {
+      currentQuestion.status = status;
       if (status == AnswerStatus.correct) {
         currentQuestion.correctCount++;
       } else if (status == AnswerStatus.wrong) {
@@ -42,36 +41,46 @@ class _QuizPageState extends State<QuizPage> {
       }
       DataStorage.saveHistory(widget.questions);
       showAnswer = false;
-      if (!isLast) {
+
+      if (currentIndex < widget.questions.length - 1) {
         currentIndex++;
+      } else {
+        Future.microtask(() {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FinishPage(
+                sectionNumber: int.tryParse(widget.title.replaceAll(RegExp(r'\D'), '')),
+              ),
+            ),
+          );
+        });
       }
     });
-
-    if (isLast) {
-      // setState の外で画面遷移を実行
-      Future.microtask(() {
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const FinishPage(),
-          ),
-        );
-      });
-    }
   }
 
-
+  Map<AnswerStatus, int> countAnswers() {
+    final counts = {
+      AnswerStatus.correct: 0,
+      AnswerStatus.wrong: 0,
+      AnswerStatus.notAnswered: 0,
+    };
+    for (var q in widget.questions) {
+      counts[q.status] = counts[q.status]! + 1;
+    }
+    return counts;
+  }
 
   @override
   Widget build(BuildContext context) {
     final current = widget.questions[currentIndex];
     final screenWidth = MediaQuery.of(context).size.width;
 
+    final stats = countAnswers();
     final total = widget.questions.length.toDouble();
-    final correct = widget.questions.where((q) => q.status == AnswerStatus.correct).length.toDouble();
-    final wrong = widget.questions.where((q) => q.status == AnswerStatus.wrong).length.toDouble();
-    final unanswered = total - correct - wrong;
+    final correct = stats[AnswerStatus.correct]!.toDouble();
+    final wrong = stats[AnswerStatus.wrong]!.toDouble();
+    final unanswered = stats[AnswerStatus.notAnswered]!.toDouble();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -84,11 +93,44 @@ class _QuizPageState extends State<QuizPage> {
           child: Center(
             child: Column(
               children: [
-                ProgressBar(
-                  correctRatio: correct / total,
-                  wrongRatio: wrong / total,
-                  unansweredRatio: unanswered / total,
+                SizedBox(
+                  height: 50, // 高さは低く
+                  child: RotatedBox(
+                    quarterTurns: 1, // 90度回転（横向きにする）
+                    child: BarChart(
+                      BarChartData(
+                        alignment: BarChartAlignment.center,
+                        maxY: 1,
+                        barGroups: [
+                          BarChartGroupData(
+                            x: 0,
+                            barRods: [
+                              BarChartRodData(
+                                toY: 1,
+                                rodStackItems: [
+                                  BarChartRodStackItem(0, correct / total, Color.fromARGB(255, 172, 255, 244)),
+                                  BarChartRodStackItem(correct / total, (correct + wrong) / total, Color.fromARGB(255, 255, 211, 171)),
+                                  BarChartRodStackItem((correct + wrong) / total, 1, Colors.grey),
+                                ],
+                                width: 30,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ],
+                          ),
+                        ],
+                        barTouchData: BarTouchData(enabled: false),
+                        titlesData: FlTitlesData(
+                          show: false,
+                        ),
+                        gridData: FlGridData(show: false),
+                        borderData: FlBorderData(show: false),
+                        groupsSpace: 4,
+                      ),
+                    ),
+                  ),
                 ),
+
+
                 const SizedBox(height: 8),
                 Text('正解: ${correct.toInt()}    不正解: ${wrong.toInt()}    未回答: ${unanswered.toInt()}'),
                 const SizedBox(height: 24),
@@ -168,49 +210,3 @@ class _QuizPageState extends State<QuizPage> {
   }
 }
 
-class ProgressBar extends StatelessWidget {
-  final double correctRatio;
-  final double wrongRatio;
-  final double unansweredRatio;
-
-  const ProgressBar({
-    super.key,
-    required this.correctRatio,
-    required this.wrongRatio,
-    required this.unansweredRatio,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // 3つの割合を合計して1.0になるように調整（念のため）
-    final totalRatio = correctRatio + wrongRatio + unansweredRatio;
-    final cRatio = correctRatio / totalRatio;
-    final wRatio = wrongRatio / totalRatio;
-    final uRatio = unansweredRatio / totalRatio;
-
-    return Container(
-      height: 24,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade400),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: Row(
-        children: [
-          Expanded(
-            flex: (cRatio * 1000).round(),
-            child: Container(color: Color.fromARGB(255, 172, 255, 244)),
-          ),
-          Expanded(
-            flex: (wRatio * 1000).round(),
-            child: Container(color: Color.fromARGB(255, 255, 211, 171)),
-          ),
-          Expanded(
-            flex: (uRatio * 1000).round(),
-            child: Container(color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-}

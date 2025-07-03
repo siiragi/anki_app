@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart';
-import 'quiz_page.dart';
+import 'section_page.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'data_storage.dart';
 import 'question_list_page.dart';
 import 'models/question.dart';
-
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -31,7 +30,7 @@ class _HomePageState extends State<HomePage> {
         final sheet = excel.tables[excel.tables.keys.first];
         if (sheet != null) {
           final loadedQuestions = <Question>[];
-          for (var row in sheet.rows) {
+          for (var row in sheet.rows.skip(1)) {
             if (row.length >= 2 &&
                 row[0] != null &&
                 row[1] != null &&
@@ -46,9 +45,7 @@ class _HomePageState extends State<HomePage> {
             }
           }
 
-          // 保存された履歴があれば反映
           final saved = await DataStorage.loadHistory();
-
           for (var q in loadedQuestions) {
             final matched = saved.firstWhere(
               (s) => s.question == q.question && s.answer == q.answer,
@@ -66,7 +63,6 @@ class _HomePageState extends State<HomePage> {
       }
     }
   }
-
 
   Map<AnswerStatus, int> countAnswers() {
     final counts = {
@@ -106,12 +102,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final stats = countAnswers();
-    final hasWrong = allQuestions.any((q) => q.status == AnswerStatus.wrong);
-    final wrongQuestions =
-        allQuestions.where((q) => q.status == AnswerStatus.wrong).toList();
-    final weakQuestions = allQuestions.where((q) => q.wrongCount >= 2).toList();
-    final hasWeak = weakQuestions.isNotEmpty;
-
+    final totalSections = (allQuestions.length / 20).ceil();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -120,200 +111,70 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(20),
         child: SingleChildScrollView(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                  foregroundColor: Colors.black,     // ボタンの文字色
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
                 onPressed: loadExcel,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFFBBDEFB),
+                  foregroundColor: Colors.black,
+                ),
                 child: const Text('Excelファイルを読み込む'),
               ),
               const SizedBox(height: 30),
-              const Text('▶ ランダム出題'),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton( 
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                      foregroundColor: Colors.black,     // ボタンの文字色
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: allQuestions.isEmpty
-                        ? null
-                        : () {
-                            final randomized =
-                                List<Question>.from(allQuestions)..shuffle();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => QuizPage(
-                                  questions: randomized,
-                                  title: 'ランダム出題',
-                                  initialIndex: 0,
-                                ),
+              const Text('🧩 セクション別出題'),
+              for (int i = 0; i < totalSections; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Builder(
+                    builder: (context) {
+                      final start = i * 20;
+                      final end = ((i + 1) * 20 > allQuestions.length)
+                          ? allQuestions.length
+                          : (i + 1) * 20;
+                      final sectionQuestions = allQuestions.sublist(start, end);
+
+                      final allCorrect = sectionQuestions.isNotEmpty &&
+                          sectionQuestions.every((q) => q.status == AnswerStatus.correct);
+
+                      return ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SectionPage(
+                                sectionNumber: i + 1,
+                                questions: sectionQuestions,
                               ),
-                            ).then((_) => setState(() {}));
-                          },
-                    child: const Text('最初から'),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                      foregroundColor: Colors.black,     // ボタンの文字色
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: allQuestions.isEmpty
-                        ? null
-                        : () {
-                            final randomized =
-                                List<Question>.from(allQuestions)..shuffle();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => QuizPage(
-                                  questions: randomized,
-                                  title: 'ランダム出題',
-                                  initialIndex: randomized.indexWhere(
-                                    (q) => q.status == AnswerStatus.notAnswered,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                    child: const Text('続きから'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Text('❌ 間違えた問題だけ'),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                      foregroundColor: Colors.black,     // ボタンの文字色
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: hasWrong
-                        ? () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => QuizPage(
-                                  questions: wrongQuestions,
-                                  title: '間違えた問題だけ',
-                                  initialIndex: 0,
-                                ),
-                              ),
-                            ).then((_) => setState(() {}));
-                          }
-                        : null,
-                    child: const Text('最初から'),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                      foregroundColor: Colors.black,     // ボタンの文字色
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: hasWrong
-                        ? () {
-                            final startIndex = wrongQuestions.indexWhere(
-                              (q) => q.status == AnswerStatus.notAnswered,
-                            );
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => QuizPage(
-                                  questions: wrongQuestions,
-                                  title: '間違えた問題だけ',
-                                  initialIndex: startIndex < 0 ? 0 : startIndex,
-                                ),
-                              ),
-                            );
-                          }
-                        : null,
-                    child: const Text('続きから'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Text('⚠️ 苦手な問題だけ'),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                      foregroundColor: Colors.black,     // ボタンの文字色
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: hasWeak
-                      ? () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => QuizPage(
-                              questions: weakQuestions,
-                              title: '苦手な問題だけ',
-                              initialIndex: 0,
                             ),
-                          ),
-                        ).then((_) => setState(() {}));
-                      }
-                    : null,
-                  child: const Text('最初から'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                    foregroundColor: Colors.black,     // ボタンの文字色
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onPressed: hasWeak
-                    ? () {
-                      final startIndex = weakQuestions.indexWhere(
-                        (q) => q.status == AnswerStatus.notAnswered,
-                      );
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => QuizPage(
-                            questions: weakQuestions,
-                            title: '苦手な問題だけ',
-                            initialIndex: startIndex < 0 ? 0 : startIndex,
-                          ),
+                          ).then((_) => setState(() {}));
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFFBBDEFB),
+                          foregroundColor: Colors.black,
                         ),
-                      ).then((_) => setState(() {}));
-                    }
-                 : null,
-                 child: const Text('続きから'),
-                ),
-               ],
-              ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('セクション ${i + 1}'),
+                            if (allCorrect)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 8),
+                                child: Icon(Icons.check_circle, color: Colors.green),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+               ),
+
+
               const SizedBox(height: 30),
+              const Text('📊 学習状況（全体）'),
               if (stats.values.reduce((a, b) => a + b) > 0)
                 Column(
                   children: [
-                    const Text('📊 学習状況'),
                     SizedBox(
                       height: 180,
                       child: PieChart(
@@ -329,29 +190,26 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
+              const SizedBox(height: 30),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFFBBDEFB), // ボタンの背景
-                  foregroundColor: Colors.black,     // ボタンの文字色
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
                 onPressed: allQuestions.isEmpty
                     ? null
                     : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => QuestionListPage(
-                            questions: allQuestions,
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => QuestionListPage(
+                              questions: allQuestions,
+                            ),
                           ),
-                        ),
-                      ).then((_) => setState(() {}));
-                    },
+                        ).then((_) => setState(() {}));
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(0xFFBBDEFB),
+                        foregroundColor: Colors.black,
+                      ),
                 child: const Text('問題一覧'),
-            ),
-
+              ),
             ],
           ),
         ),
